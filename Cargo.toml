@@ -1,0 +1,8 @@
+[package]
+name = "accord"
+description = "A Rust implementation of the Accord consensus protocol"
+version = "0.1.0"
+edition = "2021"
+authors = ["Erik Grinaker <erik@grinaker.org>"]
+
+[dependencies]
