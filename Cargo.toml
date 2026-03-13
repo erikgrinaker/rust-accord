@@ -6,3 +6,7 @@ edition = "2021"
 authors = ["Erik Grinaker <erik@grinaker.org>"]
 
 [dependencies]
+
+[dev-dependencies]
+itertools = "0.14"
+rand = "0.8"
