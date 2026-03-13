@@ -1,1 +1,5 @@
 use_small_heuristics = "Max"
+
+# These require nightly: cargo +nightly fmt
+group_imports = "StdExternalCrate"
+imports_granularity = "Module"
