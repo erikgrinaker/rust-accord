@@ -2,8 +2,16 @@
 name = "accord"
 description = "A Rust implementation of the Accord consensus protocol"
 version = "0.1.0"
-edition = "2021"
+edition = "2024"
 authors = ["Erik Grinaker <erik@grinaker.org>"]
+license = "Apache-2.0"
+repository = "https://github.com/erikgrinaker/rust-accord"
+keywords = ["accord", "consensus", "distributed-systems"]
+categories = ["algorithms", "concurrency"]
+
+[lints.clippy]
+pedantic = "deny"
+cargo = "deny"
 
 [dependencies]
 
