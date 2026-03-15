@@ -21,7 +21,7 @@ impl From<Timestamp> for TxnID {
         // `wrapping_mul` by it is invertible modulo 2^128.
         const GOLDEN_RATIO: u128 = 0x9e37_79b9_7f4a_7c15;
 
-        // Compile-time check that the timestamp fields fit in the expected bit widths above.
+        // Compile-time check that the timestamp fields fit in the expected bit widths below.
         let _: u64 = timestamp.time;
         let _: u32 = timestamp.seq;
         let _: u32 = timestamp.node;
@@ -69,5 +69,29 @@ mod tests {
     fn txn_id_display_formats_hex_segments() {
         let txn_id = TxnID(0x7ade_a432_46a1_7d0e_64f2_d490_907d_f5a6);
         assert_eq!(txn_id.to_string(), "7adea43246a17d0e64f2d490907df5a6");
+    }
+
+    /// Tests that the xor-mul-xor construction remains unique over the entire `u16` domain.
+    #[test]
+    fn xor_mul_xor_u16_unique() {
+        const ODD_MULTIPLIER: u16 = 0x9e37;
+
+        fn scramble(mut bits: u16) -> u16 {
+            bits ^= bits >> 8;
+            bits = bits.wrapping_mul(ODD_MULTIPLIER);
+            bits ^= bits >> 8;
+            bits
+        }
+
+        // Exhaustive check over all 65,536 inputs. A collision would violate uniqueness.
+        let mut seen = vec![false; u16::MAX as usize + 1];
+        for input in 0..=u16::MAX {
+            let output = scramble(input);
+            let is_seen = &mut seen[usize::from(output)];
+            assert!(!*is_seen, "collision for input {input} output {output}");
+            *is_seen = true;
+        }
+
+        assert!(seen.iter().all(|v| *v), "mapping is not surjective over u16");
     }
 }
