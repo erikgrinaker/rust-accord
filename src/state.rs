@@ -1,8 +1,9 @@
-//! Transaction types.
+//! State machine that applies transactions.
 
 use std::fmt::Display;
 
 use crate::clock::Timestamp;
+use crate::topology::ShardID;
 
 /// Stable, globally unique identifier for a transaction.
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
@@ -48,6 +49,66 @@ impl Display for TxnID {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{:032x}", self.0)
     }
+}
+
+/// A transaction that can be ordered and executed by Accord.
+pub trait Transaction {
+    /// Key type used by the topology to derive the transaction's participating shards.
+    type ShardingKey;
+    /// Read gathered from a shard during execution.
+    type Read;
+    /// Deterministic output produced once all shard reads have been gathered.
+    ///
+    /// TODO: add error handling.
+    type Output;
+
+    /// Returns the sharding keys involved in the transaction. This is used to determine the
+    /// transaction's participating shards, and must be stable for its entire lifetime.
+    fn sharding_keys(&self) -> impl Iterator<Item = Self::ShardingKey>;
+
+    /// Executes the transaction from the reads gathered from all shards.
+    ///
+    /// Implementations must be deterministic so that any coordinator presented with the same
+    /// transaction and the same shard reads produces the same output.
+    fn execute(&self, reads: impl IntoIterator<Item = (ShardID, Self::Read)>) -> Self::Output;
+}
+
+/// Deterministic state machine that applies committed Accord transactions.
+///
+/// A state machine provides the shard-local operations Accord needs during consensus and execution:
+/// deciding whether two transactions conflict, reading local state for a transaction, and applying
+/// the committed output at the chosen execution timestamp.
+pub trait StateMachine {
+    /// Transaction type accepted by this state machine.
+    type Txn: Transaction;
+    /// Error returned when applying a transaction fails.
+    type Error;
+
+    /// Returns whether two transactions conflict, meaning their execution order matters.
+    fn conflicts(&self, lhs: &Self::Txn, rhs: &Self::Txn) -> bool;
+
+    /// Reads this replica's local state for a committed transaction before execution.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the state machine cannot read the local state needed for the
+    /// transaction.
+    fn read(&self, txn: &Self::Txn) -> Result<<Self::Txn as Transaction>::Read, Self::Error>;
+
+    /// Applies a committed transaction output at the chosen execution timestamp.
+    ///
+    /// The output is supplied rather than returned because Accord executes the transaction after
+    /// gathering reads, then replicates and applies that already-determined result.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the transaction cannot be applied to the current state.
+    fn apply(
+        &mut self,
+        txn: &Self::Txn,
+        timestamp: Timestamp,
+        output: &<Self::Txn as Transaction>::Output,
+    ) -> Result<(), Self::Error>;
 }
 
 #[cfg(test)]
