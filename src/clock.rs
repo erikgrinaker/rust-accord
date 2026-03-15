@@ -7,7 +7,7 @@
 use std::sync::Mutex;
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use crate::node::NodeID;
+use crate::topology::NodeID;
 
 /// A timestamp used to impose a total order on conflicting transactions.
 #[derive(Clone, Copy, Debug, Default, Eq, Ord, PartialEq, PartialOrd)]
