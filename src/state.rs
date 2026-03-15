@@ -2,7 +2,7 @@
 
 use std::fmt::Display;
 
-use crate::clock::Timestamp;
+use crate::time::Timestamp;
 use crate::topology::ShardID;
 
 /// Stable, globally unique identifier for a transaction.
