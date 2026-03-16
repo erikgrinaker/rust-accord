@@ -1,5 +1,6 @@
 //! Core Accord building blocks.
 
+pub mod command;
 pub mod error;
 pub mod state;
 pub mod time;
