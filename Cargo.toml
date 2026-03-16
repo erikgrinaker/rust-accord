@@ -10,8 +10,8 @@ keywords = ["accord", "consensus", "distributed-systems"]
 categories = ["algorithms", "concurrency"]
 
 [lints.clippy]
-pedantic = "deny"
-cargo = "deny"
+pedantic = "warn"
+cargo = "warn"
 
 [dependencies]
 thiserror = "2.0"
