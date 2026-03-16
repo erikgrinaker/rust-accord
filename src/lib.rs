@@ -3,5 +3,6 @@
 pub mod command;
 pub mod error;
 pub mod state;
+pub mod test;
 pub mod time;
 pub mod topology;
