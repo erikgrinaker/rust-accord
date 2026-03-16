@@ -66,6 +66,9 @@ pub trait Transaction {
     /// transaction's participating shards, and must be stable for its entire lifetime.
     fn sharding_keys(&self) -> impl Iterator<Item = Self::ShardingKey>;
 
+    /// Returns whether two transactions conflict, meaning their execution order matters.
+    fn conflicts(&self, other: &Self) -> bool;
+
     /// Executes the transaction from the reads gathered from all shards.
     ///
     /// Implementations must be deterministic so that any coordinator presented with the same
@@ -83,9 +86,6 @@ pub trait StateMachine {
     type Txn: Transaction;
     /// Error returned when applying a transaction fails.
     type Error;
-
-    /// Returns whether two transactions conflict, meaning their execution order matters.
-    fn conflicts(&self, lhs: &Self::Txn, rhs: &Self::Txn) -> bool;
 
     /// Reads this replica's local state for a committed transaction before execution.
     ///
