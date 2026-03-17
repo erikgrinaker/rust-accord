@@ -1,12 +1,13 @@
 //! State machine that applies transactions.
 
-use std::fmt::Display;
+use std::collections::{HashMap, HashSet};
+use std::fmt::{Debug, Display};
 
+use crate::error::{StateError, TxnError};
 use crate::time::Timestamp;
-use crate::topology::ShardID;
 
 /// Stable, globally unique identifier for a transaction.
-#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
+#[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
 #[repr(transparent)]
 pub struct TxnID(u128);
 
@@ -52,40 +53,75 @@ impl Display for TxnID {
 }
 
 /// A transaction that can be ordered and executed by Accord.
-pub trait Transaction {
-    /// Key type used by the topology to derive the transaction's participating shards.
-    type ShardingKey;
-    /// Read gathered from a shard during execution.
-    type Read;
-    /// Deterministic output produced once all shard reads have been gathered.
-    ///
-    /// TODO: add error handling.
+pub trait Transaction: Clone {
+    /// Key used to derive the transaction's participating shards, and as a key for
+    /// [`Self::ShardRead`] and [`Self::ShardUpdate`] operations.
+    type ShardKey: Clone;
+    /// Value returned for a [`Self::ShardRead`] operation and used for execution.
+    type ShardValue;
+    /// Read operation to submit to a participating shard prior to execution.
+    type ShardRead;
+    /// Deterministic state update for a participating shard produced during execution.
+    type ShardUpdate: Clone;
+    /// Deterministic client-visible output produced during execution.
     type Output;
-
-    /// Returns the sharding keys involved in the transaction. This is used to determine the
-    /// transaction's participating shards, and must be stable for its entire lifetime.
-    fn sharding_keys(&self) -> impl Iterator<Item = Self::ShardingKey>;
 
     /// Returns whether two transactions conflict, meaning their execution order matters.
     fn conflicts(&self, other: &Self) -> bool;
 
-    /// Executes the transaction from the reads gathered from all shards.
+    /// Prepares the transaction by determining the participating shards and read operations.
+    ///
+    /// # Errors
+    ///
+    /// Fails if the transaction cannot be prepared, for example if it is malformed or missing
+    /// required information. A failed transaction will be discarded.
+    fn prepare(&self) -> Result<WorkingSet<Self>, TxnError>;
+
+    /// Executes the transaction with read values gathered from participating shards. Returns
+    /// deterministic state machine updates and client-visible output.
     ///
     /// Implementations must be deterministic so that any coordinator presented with the same
-    /// transaction and the same shard reads produces the same output.
-    fn execute(&self, reads: impl IntoIterator<Item = (ShardID, Self::Read)>) -> Self::Output;
+    /// transaction and the same shard reads produces the same mutation and output.
+    ///
+    /// # Errors
+    ///
+    /// Fails if the transaction can't execute. It will be discarded. Deterministic user-facing
+    /// errors should be returned as part of [`Self::Output`] instead.
+    fn execute(&self, reads: ShardValues<Self>) -> Result<Outcome<Self>, TxnError>;
+}
+
+/// The working set of a transaction, returned by [`Transaction::prepare`]. Specifies reads to
+/// gather from shards before execution, and which shard keys will be updated following execution.
+pub struct WorkingSet<T: Transaction> {
+    /// Reads to be gathered from shards before execution.
+    pub reads: HashMap<T::ShardKey, T::ShardRead>,
+    /// Shard keys that will see state updates during execution.
+    pub updates: HashSet<T::ShardKey>,
+}
+
+/// Values gathered from shards via [`Transaction::ShardRead`] operations.
+pub type ShardValues<T> = HashMap<<T as Transaction>::ShardKey, <T as Transaction>::ShardValue>;
+
+/// Updates to apply to shards via [`StateMachine::update`] following transaction execution.
+pub type ShardUpdates<T> = HashMap<<T as Transaction>::ShardKey, <T as Transaction>::ShardUpdate>;
+
+/// The outcome of a transaction, returned by [`Transaction::execute`]. Specifies the state
+/// machine updates to apply to shards, and the output to return to the client.
+pub struct Outcome<T: Transaction> {
+    /// State machine updates to apply to shards following execution.
+    pub updates: ShardUpdates<T>,
+    /// Client-visible output to return following execution.
+    pub output: T::Output,
 }
 
 /// Deterministic state machine that applies committed Accord transactions.
 ///
-/// A state machine provides the shard-local operations Accord needs during consensus and execution:
-/// deciding whether two transactions conflict, reading local state for a transaction, and applying
-/// the committed output at the chosen execution timestamp.
+/// A state machine provides the shard-local operations Accord needs during execution: reading local
+/// state for a transaction and applying the committed apply payload at the chosen execution
+/// timestamp.
 pub trait StateMachine {
     /// Transaction type accepted by this state machine.
     type Txn: Transaction;
-    /// Error returned when applying a transaction fails.
-    type Error;
 
     /// Reads this replica's local state for a committed transaction before execution.
     ///
@@ -93,22 +129,18 @@ pub trait StateMachine {
     ///
     /// Returns an error if the state machine cannot read the local state needed for the
     /// transaction.
-    fn read(&self, txn: &Self::Txn) -> Result<<Self::Txn as Transaction>::Read, Self::Error>;
+    fn read(
+        &self,
+        read: <Self::Txn as Transaction>::ShardRead,
+    ) -> Result<<Self::Txn as Transaction>::ShardValue, StateError>;
 
-    /// Applies a committed transaction output at the chosen execution timestamp.
-    ///
-    /// The output is supplied rather than returned because Accord executes the transaction after
-    /// gathering reads, then replicates and applies that already-determined result.
+    /// Applies a committed transaction update.
     ///
     /// # Errors
     ///
     /// Returns an error if the transaction cannot be applied to the current state.
-    fn apply(
-        &mut self,
-        txn: &Self::Txn,
-        timestamp: Timestamp,
-        output: &<Self::Txn as Transaction>::Output,
-    ) -> Result<(), Self::Error>;
+    fn update(&mut self, update: <Self::Txn as Transaction>::ShardUpdate)
+    -> Result<(), StateError>;
 }
 
 #[cfg(test)]

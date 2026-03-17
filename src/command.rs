@@ -9,7 +9,7 @@
 use std::collections::BTreeSet;
 
 use crate::error::IoError;
-use crate::state::{Transaction, TxnID};
+use crate::state::{ShardUpdates, Transaction, TxnID};
 use crate::time::Timestamp;
 use crate::topology::{NodeID, ShardID};
 
@@ -42,6 +42,7 @@ pub enum CommandStatus {
 }
 
 /// Replica-local record for a transaction being processed by Accord.
+#[derive(Clone)]
 pub struct CommandRecord<T: Transaction> {
     /// Stable transaction identifier.
     pub txn_id: TxnID,
@@ -70,10 +71,10 @@ pub struct CommandRecord<T: Transaction> {
     ///
     /// INVARIANT: this is `Some` if [`Self::status`] is at least [`CommandStatus::Accepted`].
     pub accepted_ballot: Option<Ballot>,
-    /// Deterministic execution result, once computed.
+    /// Deterministic shard updates, once computed.
     ///
     /// This may be populated before the record reaches [`CommandStatus::Applied`].
-    pub output: Option<T::Output>,
+    pub updates: Option<ShardUpdates<T>>,
 }
 
 /// Replica-local storage for command records. The store is safe for concurrent access.
