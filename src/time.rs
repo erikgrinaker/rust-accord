@@ -34,7 +34,6 @@ pub struct Clock<S: TimeSource = SystemTimeSource> {
 
 impl Clock<SystemTimeSource> {
     /// Creates a clock for the given node ID.
-    #[must_use]
     pub fn new(node: NodeID) -> Self {
         Self::with_time_source(node, SystemTimeSource)
     }

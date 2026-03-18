@@ -16,7 +16,6 @@ pub struct MemoryCommandStore<T: Transaction> {
 
 impl<T: Transaction> MemoryCommandStore<T> {
     /// Creates an empty command store.
-    #[must_use]
     pub fn new() -> Self {
         Self { map: RwLock::default() }
     }

@@ -120,7 +120,6 @@ pub struct WorkingSet<T: Transaction> {
 
 impl<T: Transaction> WorkingSet<T> {
     /// Creates an new, empty working set.
-    #[must_use]
     pub fn new() -> Self {
         Self::default()
     }
