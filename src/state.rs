@@ -2,6 +2,9 @@
 
 use std::collections::{HashMap, HashSet};
 use std::fmt::{Debug, Display};
+use std::hash::Hash;
+
+use educe::Educe;
 
 use crate::error::{StateError, TxnError};
 use crate::time::Timestamp;
@@ -56,15 +59,15 @@ impl Display for TxnID {
 pub trait Transaction: Clone {
     /// Key used to derive the transaction's participating shards, and as a key for
     /// [`Self::ShardRead`] and [`Self::ShardUpdate`] operations.
-    type ShardKey: Clone;
+    type ShardKey: Clone + Debug + Display + Eq + Hash + Ord + PartialEq + PartialOrd;
     /// Value returned for a [`Self::ShardRead`] operation and used for execution.
-    type ShardValue;
+    type ShardValue: Debug;
     /// Read operation to submit to a participating shard prior to execution.
-    type ShardRead;
+    type ShardRead: Debug;
     /// Deterministic state update for a participating shard produced during execution.
-    type ShardUpdate: Clone;
+    type ShardUpdate: Clone + Debug;
     /// Deterministic client-visible output produced during execution.
-    type Output;
+    type Output: Debug;
 
     /// Returns whether two transactions conflict, meaning their execution order matters.
     fn conflicts(&self, other: &Self) -> bool;
@@ -90,14 +93,11 @@ pub trait Transaction: Clone {
     fn execute(&self, reads: ShardValues<Self>) -> Result<Outcome<Self>, TxnError>;
 }
 
-/// The working set of a transaction, returned by [`Transaction::prepare`]. Specifies reads to
-/// gather from shards before execution, and which shard keys will be updated following execution.
-pub struct WorkingSet<T: Transaction> {
-    /// Reads to be gathered from shards before execution.
-    pub reads: HashMap<T::ShardKey, T::ShardRead>,
-    /// Shard keys that will see state updates during execution.
-    pub updates: HashSet<T::ShardKey>,
-}
+/// Shard keys.
+pub type ShardKeys<T> = HashSet<<T as Transaction>::ShardKey>;
+
+/// Reads dispatches to shards prior to transaction execution.
+pub type ShardReads<T> = HashMap<<T as Transaction>::ShardKey, <T as Transaction>::ShardRead>;
 
 /// Values gathered from shards via [`Transaction::ShardRead`] operations.
 pub type ShardValues<T> = HashMap<<T as Transaction>::ShardKey, <T as Transaction>::ShardValue>;
@@ -105,8 +105,31 @@ pub type ShardValues<T> = HashMap<<T as Transaction>::ShardKey, <T as Transactio
 /// Updates to apply to shards via [`StateMachine::update`] following transaction execution.
 pub type ShardUpdates<T> = HashMap<<T as Transaction>::ShardKey, <T as Transaction>::ShardUpdate>;
 
+/// The working set of a transaction, returned by [`Transaction::prepare`]. Specifies reads to
+/// gather from shards before execution, and which shard keys will be updated following execution.
+#[derive(Educe)]
+#[educe(Default)]
+#[educe(Debug(bound(T::ShardRead: Debug)))]
+#[educe(PartialEq(bound(T::ShardRead: PartialEq)))]
+pub struct WorkingSet<T: Transaction> {
+    /// Reads to be gathered from shards before execution.
+    pub reads: ShardReads<T>,
+    /// Shard keys that will see state updates during execution.
+    pub updates: ShardKeys<T>,
+}
+
+impl<T: Transaction> WorkingSet<T> {
+    /// Creates an new, empty working set.
+    #[must_use]
+    pub fn new() -> Self {
+        Self::default()
+    }
+}
+
 /// The outcome of a transaction, returned by [`Transaction::execute`]. Specifies the state
 /// machine updates to apply to shards, and the output to return to the client.
+#[derive(Educe)]
+#[educe(Default(bound(T::Output: Default)))]
 pub struct Outcome<T: Transaction> {
     /// State machine updates to apply to shards following execution.
     pub updates: ShardUpdates<T>,
@@ -119,7 +142,7 @@ pub struct Outcome<T: Transaction> {
 /// A state machine provides the shard-local operations Accord needs during execution: reading local
 /// state for a transaction and applying the committed apply payload at the chosen execution
 /// timestamp.
-pub trait StateMachine {
+pub trait State {
     /// Transaction type accepted by this state machine.
     type Txn: Transaction;
 
@@ -129,18 +152,14 @@ pub trait StateMachine {
     ///
     /// Returns an error if the state machine cannot read the local state needed for the
     /// transaction.
-    fn read(
-        &self,
-        read: <Self::Txn as Transaction>::ShardRead,
-    ) -> Result<<Self::Txn as Transaction>::ShardValue, StateError>;
+    fn read(&self, reads: ShardReads<Self::Txn>) -> Result<ShardValues<Self::Txn>, StateError>;
 
     /// Applies a committed transaction update.
     ///
     /// # Errors
     ///
     /// Returns an error if the transaction cannot be applied to the current state.
-    fn update(&mut self, update: <Self::Txn as Transaction>::ShardUpdate)
-    -> Result<(), StateError>;
+    fn update(&mut self, updates: ShardUpdates<Self::Txn>) -> Result<(), StateError>;
 }
 
 #[cfg(test)]
@@ -159,9 +178,12 @@ mod tests {
 
     /// Tests that [`TxnID`] displays the ID as hex.
     #[test]
-    fn txn_id_display_formats_hex_segments() {
+    fn txn_id_display() {
         let txn_id = TxnID(0x7ade_a432_46a1_7d0e_64f2_d490_907d_f5a6);
         assert_eq!(txn_id.to_string(), "7adea43246a17d0e64f2d490907df5a6");
+
+        let txn_id = TxnID(0);
+        assert_eq!(txn_id.to_string(), "00000000000000000000000000000000");
     }
 
     /// Tests that the xor-mul-xor construction remains unique over the entire `u16` domain.

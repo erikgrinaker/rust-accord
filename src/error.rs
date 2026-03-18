@@ -20,14 +20,14 @@ pub enum Error {
 /// An I/O error.
 #[derive(Debug, Error)]
 #[error("IO error: {0}")]
-pub struct IoError(#[from] std::io::Error);
+pub struct IoError(#[from] pub std::io::Error);
 
 /// A state machine error.
 #[derive(Debug, Error)]
 #[error("state machine error: {0}")]
-pub struct StateError(String);
+pub struct StateError(pub String);
 
 /// A transaction error.
 #[derive(Debug, Error)]
 #[error("transaction error: {0}")]
-pub struct TxnError(String);
+pub struct TxnError(pub String);
