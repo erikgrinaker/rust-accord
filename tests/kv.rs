@@ -95,13 +95,13 @@ impl accord::Transaction for KvTxn {
     }
 
     fn execute(
-        &self,
+        self,
         reads: HashMap<Key, Option<Value>>,
     ) -> Result<accord::Outcome<Self>, TxnError> {
         let mut updates = HashMap::new();
         let mut output = Vec::with_capacity(self.ops.len());
 
-        for op in &self.ops {
+        for op in self.ops {
             // Read the key's current value, including reading our own writes. Errors if no value
             // is found, since all keys should have been read during prepare.
             let key = op.key();
@@ -113,7 +113,7 @@ impl accord::Transaction for KvTxn {
             match op {
                 KvOp::Delete(key) => {
                     let exists = current.is_some();
-                    updates.insert(key.clone(), None);
+                    updates.insert(key, None);
                     output.push(KvOutput::Delete(exists));
                 }
                 KvOp::Get(_key) => {
@@ -121,7 +121,7 @@ impl accord::Transaction for KvTxn {
                 }
                 KvOp::Set(key, value) => {
                     let exists = current.is_some();
-                    updates.insert(key.clone(), Some(value.clone()));
+                    updates.insert(key, Some(value));
                     output.push(KvOutput::Set(exists));
                 }
             }

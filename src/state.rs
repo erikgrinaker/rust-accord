@@ -90,7 +90,7 @@ pub trait Transaction: Clone {
     ///
     /// Fails if the transaction can't execute. It will be discarded. Deterministic user-facing
     /// errors should be returned as part of [`Self::Output`] instead.
-    fn execute(&self, reads: ShardValues<Self>) -> Result<Outcome<Self>, TxnError>;
+    fn execute(self, reads: ShardValues<Self>) -> Result<Outcome<Self>, TxnError>;
 }
 
 /// Shard keys.
