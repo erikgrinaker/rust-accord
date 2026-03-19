@@ -1,6 +1,6 @@
 //! Shared test helpers for unit and integration tests.
 
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::{BTreeMap, HashSet};
 use std::sync::RwLock;
 
 use crate::command::{CommandRecord, CommandStore};
@@ -38,7 +38,7 @@ impl<T: Transaction> CommandStore<T> for MemoryCommandStore<T> {
         Ok(())
     }
 
-    fn scan(&self, shards: &BTreeSet<ShardID>) -> Self::ScanIterator {
+    fn scan(&self, shards: &HashSet<ShardID>) -> Self::ScanIterator {
         self.map
             .read()
             .expect("rwlock poisoned")

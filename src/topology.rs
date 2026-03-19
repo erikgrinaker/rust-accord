@@ -4,7 +4,7 @@
 //! to a replica-set. Transactions are routed to the set of shards they may touch before consensus
 //! begins, and topology changes are modeled as configuration changes across epochs.
 
-use std::collections::BTreeSet;
+use std::collections::HashSet;
 
 /// Configuration epoch for shard membership and partitioning decisions.
 pub type Epoch = u64;
@@ -23,7 +23,7 @@ pub struct Shard {
     ///
     /// INVARIANT: this set is non-empty.
     /// INVARIANT: all replicas have [`ShardReplica::shard_id`] equal to [`Self::id`].
-    pub replicas: BTreeSet<ShardReplica>,
+    pub replicas: HashSet<ShardReplica>,
 }
 
 /// A shard replica instance hosted by a node. A node can only host one replica of a given shard
@@ -55,7 +55,7 @@ pub trait Topology {
     fn keys_to_shards<'a>(
         &self,
         keys: impl IntoIterator<Item = &'a Self::ShardingKey>,
-    ) -> BTreeSet<ShardID>
+    ) -> HashSet<ShardID>
     where
         Self::ShardingKey: 'a,
     {

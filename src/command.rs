@@ -6,7 +6,7 @@
 //! [`CommandRecord::dependencies`], ballot promises, and the highest phase the command has
 //! reached.
 
-use std::collections::BTreeSet;
+use std::collections::HashSet;
 
 use crate::error::IoError;
 use crate::state::{ShardUpdates, Transaction, TxnID};
@@ -51,7 +51,7 @@ pub struct CommandRecord<T: Transaction> {
     /// Shards that participate in the transaction.
     ///
     /// INVARIANT: non-empty.
-    pub participants: BTreeSet<ShardID>,
+    pub participants: HashSet<ShardID>,
     /// Highest command status reached at this replica.
     pub status: CommandStatus,
     /// Coordinator proposal timestamp.
@@ -64,7 +64,7 @@ pub struct CommandRecord<T: Transaction> {
     ///
     /// Execution filters this set per shard using the dependency commands'
     /// [`CommandRecord::participants`].
-    pub dependencies: BTreeSet<TxnID>,
+    pub dependencies: HashSet<TxnID>,
     /// Highest recovery ballot promised by this replica.
     pub promised_ballot: Ballot,
     /// Ballot that most recently accepted [`Self::execute_at`] and [`Self::dependencies`], if any.
@@ -108,5 +108,5 @@ pub trait CommandStore<T: Transaction> {
     fn set(&self, record: CommandRecord<T>) -> Result<(), IoError>;
 
     /// Lists commands that intersect the given shards.
-    fn scan(&self, shards: &BTreeSet<ShardID>) -> Self::ScanIterator;
+    fn scan(&self, shards: &HashSet<ShardID>) -> Self::ScanIterator;
 }
