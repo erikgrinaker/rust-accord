@@ -3,7 +3,7 @@
 use std::collections::{HashMap, HashSet};
 
 use accord::error::{StateError, TxnError};
-use accord::{State as _, Transaction as _};
+use accord::{State as _, Transaction as _, WorkingSet as _};
 
 /// Key type for the KV store.
 type Key = String;
@@ -43,6 +43,23 @@ enum KvOutput {
     Set(bool),
 }
 
+/// Prepared working set for a [`KvTxn`].
+#[derive(Clone, Debug, Default, Eq, PartialEq)]
+struct KvWorkingSet {
+    reads: HashSet<Key>,
+    writes: HashSet<Key>,
+}
+
+impl accord::WorkingSet<KvTxn> for KvWorkingSet {
+    fn read_set(&self) -> HashSet<Key> {
+        self.reads.clone()
+    }
+
+    fn write_set(&self) -> HashSet<Key> {
+        self.writes.clone()
+    }
+}
+
 /// Key/value transaction which executes a sequence of operations.
 #[derive(Clone, Debug)]
 struct KvTxn {
@@ -54,16 +71,6 @@ impl KvTxn {
     fn new(ops: Vec<KvOp>) -> Self {
         Self { ops }
     }
-
-    /// Returns the keys read by this transaction.
-    fn read_set(&self) -> HashSet<&Key> {
-        self.ops.iter().filter(|op| !op.is_write()).map(KvOp::key).collect()
-    }
-
-    /// Returns the keys written by this transaction.
-    fn write_set(&self) -> HashSet<&Key> {
-        self.ops.iter().filter(|op| op.is_write()).map(KvOp::key).collect()
-    }
 }
 
 impl accord::Transaction for KvTxn {
@@ -71,27 +78,23 @@ impl accord::Transaction for KvTxn {
     type ShardValue = Option<Value>;
     type ShardRead = ();
     type ShardUpdate = Option<Value>;
+    type WorkingSet = KvWorkingSet;
     type Output = Vec<KvOutput>;
 
-    fn conflicts(&self, other: &Self) -> bool {
-        let lhs_writes = self.write_set();
-        let rhs_writes = other.write_set();
-        !(lhs_writes.is_disjoint(&rhs_writes)
-            && lhs_writes.is_disjoint(&other.read_set())
-            && rhs_writes.is_disjoint(&self.read_set()))
-    }
-
-    fn prepare(&self) -> Result<accord::WorkingSet<Self>, TxnError> {
-        let mut working_set = accord::WorkingSet::default();
+    fn prepare(&self) -> Result<Self::WorkingSet, TxnError> {
+        let mut working_set = KvWorkingSet::default();
         for op in &self.ops {
-            let key = op.key().to_owned();
+            let key = op.key();
+            working_set.reads.insert(key.clone());
             if op.is_write() {
-                working_set.updates.insert(key.clone());
+                working_set.writes.insert(key.clone());
             }
-            // All operations must read, even writes (to determine if the key existed).
-            working_set.reads.insert(key, ());
         }
         Ok(working_set)
+    }
+
+    fn reads(&self) -> HashMap<Key, ()> {
+        self.ops.iter().map(|op| (op.key().clone(), ())).collect()
     }
 
     fn execute(
@@ -157,8 +160,10 @@ impl accord::State for KVState {
 
 #[test]
 fn kv_txn_conflicts() {
-    let read = KvTxn::new(vec![KvOp::Get("alpha".into())]);
-    let write = KvTxn::new(vec![KvOp::Set("alpha".into(), "value".into())]);
+    let read = KvTxn::new(vec![KvOp::Get("alpha".into())]).prepare().expect("prepare read");
+    let write = KvTxn::new(vec![KvOp::Set("alpha".into(), "value".into())])
+        .prepare()
+        .expect("prepare write");
 
     // Reads don't conflict.
     assert!(!read.conflicts(&read));
@@ -169,8 +174,8 @@ fn kv_txn_conflicts() {
     assert!(write.conflicts(&write));
 
     // Non-overlapping keys don't conflict.
-    let a = KvTxn::new(vec![KvOp::Set("a".into(), "value".into())]);
-    let b = KvTxn::new(vec![KvOp::Set("b".into(), "value".into())]);
+    let a = KvTxn::new(vec![KvOp::Set("a".into(), "value".into())]).prepare().expect("prepare a");
+    let b = KvTxn::new(vec![KvOp::Set("b".into(), "value".into())]).prepare().expect("prepare b");
 
     assert!(!a.conflicts(&b));
     assert!(!b.conflicts(&a));
@@ -197,16 +202,14 @@ fn kv_txn_execute() -> Result<(), Box<dyn std::error::Error>> {
     let working_set = txn.prepare()?;
     assert_eq!(
         working_set,
-        accord::WorkingSet {
-            reads: HashMap::from(
-                [("alpha".into(), ()), ("beta".into(), ()), ("gamma".into(), ()),]
-            ),
-            updates: HashSet::from(["alpha".into(), "beta".into(), "gamma".into()]),
+        KvWorkingSet {
+            reads: HashSet::from(["alpha".into(), "beta".into(), "gamma".into()]),
+            writes: HashSet::from(["alpha".into(), "beta".into(), "gamma".into()]),
         }
     );
 
     // Gather the reads.
-    let reads = state.read(working_set.reads)?;
+    let reads = state.read(txn.reads())?;
 
     // Execute the transaction and verify the outcome.
     let outcome = txn.execute(reads)?;

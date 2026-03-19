@@ -66,19 +66,22 @@ pub trait Transaction: Clone {
     type ShardRead: Debug;
     /// Deterministic state update for a participating shard produced during execution.
     type ShardUpdate: Clone + Debug;
+    /// The transaction's working set. Used to determine participating shards and detect conflicts
+    /// between transactions during preparation.
+    type WorkingSet: WorkingSet<Self>;
     /// Deterministic client-visible output produced during execution.
     type Output: Debug;
 
-    /// Returns whether two transactions conflict, meaning their execution order matters.
-    fn conflicts(&self, other: &Self) -> bool;
-
-    /// Prepares the transaction by determining the participating shards and read operations.
+    /// Prepares the transaction and returns its working set.
     ///
     /// # Errors
     ///
     /// Fails if the transaction cannot be prepared, for example if it is malformed or missing
     /// required information. A failed transaction will be discarded.
-    fn prepare(&self) -> Result<WorkingSet<Self>, TxnError>;
+    fn prepare(&self) -> Result<Self::WorkingSet, TxnError>;
+
+    /// Returns shard reads to submit to participating shards during execution.
+    fn reads(&self) -> ShardReads<Self>;
 
     /// Executes the transaction with read values gathered from participating shards. Returns
     /// deterministic state machine updates and client-visible output.
@@ -105,23 +108,35 @@ pub type ShardValues<T> = HashMap<<T as Transaction>::ShardKey, <T as Transactio
 /// Updates to apply to shards via [`StateMachine::update`] following transaction execution.
 pub type ShardUpdates<T> = HashMap<<T as Transaction>::ShardKey, <T as Transaction>::ShardUpdate>;
 
-/// The working set of a transaction, returned by [`Transaction::prepare`]. Specifies reads to
-/// gather from shards before execution, and which shard keys will be updated following execution.
-#[derive(Educe)]
-#[educe(Default)]
-#[educe(Debug(bound(T::ShardRead: Debug)))]
-#[educe(PartialEq(bound(T::ShardRead: PartialEq)))]
-pub struct WorkingSet<T: Transaction> {
-    /// Reads to be gathered from shards before execution.
-    pub reads: ShardReads<T>,
-    /// Shard keys that will see state updates during execution.
-    pub updates: ShardKeys<T>,
-}
+/// The working set of a transaction, returned by [`Transaction::prepare`]. Used to determine
+/// participating shards and detect conflicts between transactions.
+pub trait WorkingSet<T: Transaction> {
+    /// Determines whether this transaction conflicts with another transaction. By default, checks
+    /// if either transaction's write set overlaps with the other transaction's working set, which
+    /// is a common heuristic, but transactions can override it with their own conflict logic.
+    fn conflicts(&self, other: &Self) -> bool {
+        let lhs_writes = self.write_set();
+        let rhs_writes = other.write_set();
 
-impl<T: Transaction> WorkingSet<T> {
-    /// Creates an new, empty working set.
-    pub fn new() -> Self {
-        Self::default()
+        // Fast path: no writes.
+        if lhs_writes.is_empty() && rhs_writes.is_empty() {
+            return false;
+        }
+
+        !(lhs_writes.is_disjoint(&other.work_set()) && rhs_writes.is_disjoint(&self.work_set()))
+    }
+
+    /// Shard keys that will be read during execution.
+    fn read_set(&self) -> ShardKeys<T>;
+
+    /// Shard keys that will see state updates during execution.
+    fn write_set(&self) -> ShardKeys<T>;
+
+    /// All shard keys that will be accessed during execution. The union of the read and write sets.
+    fn work_set(&self) -> ShardKeys<T> {
+        let mut work_set = self.read_set();
+        work_set.extend(self.write_set());
+        work_set
     }
 }
 
