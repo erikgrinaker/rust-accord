@@ -40,7 +40,7 @@ pub struct ShardReplica {
 /// TODO: support reconfiguration.
 pub trait Topology {
     /// Key type used by the partitioning scheme.
-    type ShardingKey;
+    type ShardKey;
 
     /// Returns the configuration epoch for this topology.
     fn epoch(&self) -> Epoch;
@@ -49,16 +49,5 @@ pub trait Topology {
     fn shard(&self, shard_id: ShardID) -> Option<&Shard>;
 
     /// Maps a key to the shard that owns it in this topology.
-    fn key_to_shard(&self, key: &Self::ShardingKey) -> ShardID;
-
-    /// Maps a set of keys to the owning shards in this topology.
-    fn keys_to_shards<'a>(
-        &self,
-        keys: impl IntoIterator<Item = &'a Self::ShardingKey>,
-    ) -> HashSet<ShardID>
-    where
-        Self::ShardingKey: 'a,
-    {
-        keys.into_iter().map(|key| self.key_to_shard(key)).collect()
-    }
+    fn key_to_shard(&self, key: &Self::ShardKey) -> ShardID;
 }
