@@ -4,8 +4,6 @@ use std::collections::{HashMap, HashSet};
 use std::fmt::{Debug, Display};
 use std::hash::Hash;
 
-use educe::Educe;
-
 use crate::error::{StateError, TxnError};
 use crate::time::Timestamp;
 
@@ -81,7 +79,11 @@ pub trait Transaction: Clone {
     fn prepare(&self) -> Result<Self::WorkingSet, TxnError>;
 
     /// Returns shard reads to submit to participating shards during execution.
-    fn reads(&self) -> ShardReads<Self>;
+    ///
+    /// # Errors
+    ///
+    /// Fails if the transaction can't produce the shard reads needed for execution.
+    fn reads(&self) -> Result<ShardReads<Self>, TxnError>;
 
     /// Executes the transaction with read values gathered from participating shards. Returns
     /// deterministic state machine updates and client-visible output.
@@ -93,7 +95,10 @@ pub trait Transaction: Clone {
     ///
     /// Fails if the transaction can't execute. It will be discarded. Deterministic user-facing
     /// errors should be returned as part of [`Self::Output`] instead.
-    fn execute(self, reads: ShardValues<Self>) -> Result<Outcome<Self>, TxnError>;
+    fn execute(
+        self,
+        reads: ShardValues<Self>,
+    ) -> Result<(ShardUpdates<Self>, Self::Output), TxnError>;
 }
 
 /// Shard keys.
@@ -138,17 +143,6 @@ pub trait WorkingSet<T: Transaction> {
         work_set.extend(self.write_set());
         work_set
     }
-}
-
-/// The outcome of a transaction, returned by [`Transaction::execute`]. Specifies the state
-/// machine updates to apply to shards, and the output to return to the client.
-#[derive(Educe)]
-#[educe(Default(bound(T::Output: Default)))]
-pub struct Outcome<T: Transaction> {
-    /// State machine updates to apply to shards following execution.
-    pub updates: ShardUpdates<T>,
-    /// Client-visible output to return following execution.
-    pub output: T::Output,
 }
 
 /// Deterministic state machine that applies committed Accord transactions.

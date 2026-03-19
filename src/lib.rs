@@ -8,4 +8,4 @@ pub mod time;
 pub mod topology;
 
 // Re-export core types for users of the library.
-pub use state::{Outcome, State, Transaction, TxnID, WorkingSet};
+pub use state::{State, Transaction, TxnID, WorkingSet};

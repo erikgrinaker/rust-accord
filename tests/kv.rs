@@ -93,14 +93,14 @@ impl accord::Transaction for KvTxn {
         Ok(working_set)
     }
 
-    fn reads(&self) -> HashMap<Key, ()> {
-        self.ops.iter().map(|op| (op.key().clone(), ())).collect()
+    fn reads(&self) -> Result<HashMap<Key, ()>, TxnError> {
+        Ok(self.ops.iter().map(|op| (op.key().clone(), ())).collect())
     }
 
     fn execute(
         self,
         reads: HashMap<Key, Option<Value>>,
-    ) -> Result<accord::Outcome<Self>, TxnError> {
+    ) -> Result<(HashMap<Key, Option<Value>>, Vec<KvOutput>), TxnError> {
         let mut updates = HashMap::new();
         let mut output = Vec::with_capacity(self.ops.len());
 
@@ -130,7 +130,7 @@ impl accord::Transaction for KvTxn {
             }
         }
 
-        Ok(accord::Outcome { updates, output })
+        Ok((updates, output))
     }
 }
 
@@ -209,12 +209,12 @@ fn kv_txn_execute() -> Result<(), Box<dyn std::error::Error>> {
     );
 
     // Gather the reads.
-    let reads = state.read(txn.reads())?;
+    let reads = state.read(txn.reads()?)?;
 
     // Execute the transaction and verify the outcome.
-    let outcome = txn.execute(reads)?;
+    let (updates, output) = txn.execute(reads)?;
     assert_eq!(
-        outcome.updates,
+        updates,
         HashMap::from([
             ("alpha".into(), None),
             ("beta".into(), Some("new".into())),
@@ -222,7 +222,7 @@ fn kv_txn_execute() -> Result<(), Box<dyn std::error::Error>> {
         ]),
     );
     assert_eq!(
-        outcome.output,
+        output,
         vec![
             KvOutput::Get(Some("value".into())),
             KvOutput::Set(true),
@@ -234,7 +234,7 @@ fn kv_txn_execute() -> Result<(), Box<dyn std::error::Error>> {
     );
 
     // Apply the updates to the state machine.
-    state.update(outcome.updates)?;
+    state.update(updates)?;
     assert_eq!(state.inner, HashMap::from([("beta".into(), "new".into())]));
 
     Ok(())
