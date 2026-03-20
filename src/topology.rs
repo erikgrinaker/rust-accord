@@ -28,6 +28,7 @@ pub struct Shard {
 
 /// A shard replica instance hosted by a node. A node can only host one replica of a given shard
 /// (but it can host replicas of multiple shards).
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 pub struct ShardReplica {
     /// Shard hosted by this replica instance.
     pub shard_id: ShardID,
