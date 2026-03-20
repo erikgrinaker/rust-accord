@@ -51,11 +51,18 @@ struct KvWorkingSet {
 }
 
 impl accord::WorkingSet<KvTxn> for KvWorkingSet {
-    fn read_set(&self) -> HashSet<Key> {
+    fn for_keys(&self, keys: &HashSet<Key>) -> Self {
+        Self {
+            reads: self.reads.intersection(keys).cloned().collect(),
+            writes: self.writes.intersection(keys).cloned().collect(),
+        }
+    }
+
+    fn read_keys(&self) -> HashSet<Key> {
         self.reads.clone()
     }
 
-    fn write_set(&self) -> HashSet<Key> {
+    fn update_keys(&self) -> HashSet<Key> {
         self.writes.clone()
     }
 }

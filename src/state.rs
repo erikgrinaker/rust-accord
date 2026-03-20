@@ -120,29 +120,33 @@ pub trait WorkingSet<T: Transaction> {
     /// if either transaction's write set overlaps with the other transaction's working set, which
     /// is a common heuristic, but transactions can override it with their own conflict logic.
     fn conflicts(&self, other: &Self) -> bool {
-        let lhs_writes = self.write_set();
-        let rhs_writes = other.write_set();
+        let lhs_writes = self.update_keys();
+        let rhs_writes = other.update_keys();
 
         // Fast path: no writes.
         if lhs_writes.is_empty() && rhs_writes.is_empty() {
             return false;
         }
 
-        !(lhs_writes.is_disjoint(&other.work_set()) && rhs_writes.is_disjoint(&self.work_set()))
+        !(lhs_writes.is_disjoint(&other.keys()) && rhs_writes.is_disjoint(&self.keys()))
+    }
+
+    /// Generates a new working set for the given keys. This is used to partition the working set
+    /// across shards during preparation.
+    fn for_keys(&self, keys: &ShardKeys<T>) -> Self;
+
+    /// All shard keys that will be accessed during execution. The union of the read and write keys.
+    fn keys(&self) -> ShardKeys<T> {
+        let mut work_set = self.read_keys();
+        work_set.extend(self.update_keys());
+        work_set
     }
 
     /// Shard keys that will be read during execution.
-    fn read_set(&self) -> ShardKeys<T>;
+    fn read_keys(&self) -> ShardKeys<T>;
 
-    /// Shard keys that will see state updates during execution.
-    fn write_set(&self) -> ShardKeys<T>;
-
-    /// All shard keys that will be accessed during execution. The union of the read and write sets.
-    fn work_set(&self) -> ShardKeys<T> {
-        let mut work_set = self.read_set();
-        work_set.extend(self.write_set());
-        work_set
-    }
+    /// Shard keys that will be updated during execution.
+    fn update_keys(&self) -> ShardKeys<T>;
 }
 
 /// Deterministic state machine that applies committed Accord transactions.
