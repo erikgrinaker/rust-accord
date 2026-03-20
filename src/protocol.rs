@@ -29,6 +29,16 @@ pub enum Endpoint {
     Replica(ShardReplica),
 }
 
+/// Routed protocol message delivered through a [`Transport`].
+pub struct Envelope<T: Transaction> {
+    /// Originating endpoint.
+    pub from: Endpoint,
+    /// Destination endpoint.
+    pub to: Endpoint,
+    /// Protocol payload.
+    pub message: Message<T>,
+}
+
 /// Protocol message exchanged between coordinators and shard replicas.
 pub enum Message<T: Transaction> {
     /// Fast-path proposal sent to the electorate of each participating shard.
@@ -152,19 +162,17 @@ pub enum Message<T: Transaction> {
 ///
 /// TODO: consider making this async.
 pub trait Transport<T: Transaction>: Send + Sync {
-    /// Sends a message to a transport endpoint.
+    /// Sends an outbound message.
     ///
     /// # Errors
     ///
     /// Returns an error if the transport could not enqueue or emit the message.
-    fn send(&self, endpoint: Endpoint, message: Message<T>) -> Result<(), IoError>;
+    fn send(&self, envelope: Envelope<T>) -> Result<(), IoError>;
 
     /// Receives the next inbound message.
-    ///
-    /// Returns the sender endpoint together with the received message.
     ///
     /// # Errors
     ///
     /// Returns an error if the transport could not receive or decode a message.
-    fn recv(&self) -> Result<(Endpoint, Message<T>), IoError>;
+    fn recv(&self) -> Result<Envelope<T>, IoError>;
 }
