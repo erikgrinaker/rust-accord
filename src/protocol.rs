@@ -12,7 +12,7 @@ use crate::command::Ballot;
 use crate::error::IoError;
 use crate::state::{ShardReads, ShardUpdates, ShardValues, Transaction, TxnID};
 use crate::time::Timestamp;
-use crate::topology::{NodeID, ShardID, ShardReplica};
+use crate::topology::{NodeID, ShardID};
 
 /// Dependency set attached to a protocol decision.
 pub type Dependencies = HashSet<TxnID>;
@@ -23,10 +23,12 @@ pub type Participants = HashSet<ShardID>;
 /// Transport endpoint for Accord protocol messages.
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 pub enum Endpoint {
-    /// A coordinator node endpoint.
+    /// A node.
     Node(NodeID),
-    /// A specific shard replica endpoint.
-    Replica(ShardReplica),
+    /// A coordinator.
+    Coordinator(NodeID, TxnID),
+    /// A shard replica.
+    Replica(NodeID, ShardID),
 }
 
 /// Routed protocol message delivered through a [`Transport`].
@@ -153,26 +155,14 @@ pub enum Message<T: Transaction> {
     },
 }
 
-/// Point-to-point transport used to deliver Accord protocol messages.
+/// Sends a protocol message to a destination endpoint.
 ///
-/// The paper assumes a partially synchronous network with crash-stop failures, loosely synchronized
-/// clocks, and no FIFO delivery guarantee. Implementations must therefore tolerate message
-/// reordering, duplication, delay, and loss, and higher layers must discard stale messages once a
-/// newer phase or ballot has been observed.
-///
-/// TODO: consider making this async.
-pub trait Transport<T: Transaction>: Send + Sync {
-    /// Sends an outbound message.
+/// TODO: async?
+pub trait Sender<T: Transaction>: Send + Sync {
+    /// Sends a message to the given endpoint.
     ///
     /// # Errors
     ///
-    /// Returns an error if the transport could not enqueue or emit the message.
-    fn send(&self, envelope: Envelope<T>) -> Result<(), IoError>;
-
-    /// Receives the next inbound message.
-    ///
-    /// # Errors
-    ///
-    /// Returns an error if the transport could not receive or decode a message.
-    fn recv(&self) -> Result<Envelope<T>, IoError>;
+    /// Returns an error if the message could not be enqueued or emitted.
+    fn send(&self, to: Endpoint, message: Envelope<T>) -> Result<(), IoError>;
 }

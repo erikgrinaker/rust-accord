@@ -9,5 +9,5 @@ pub mod time;
 pub mod topology;
 
 // Re-export core types for users of the library.
-pub use protocol::{Endpoint, Envelope, Message, Transport};
+pub use protocol::{Endpoint, Message, Sender};
 pub use state::{State, Transaction, TxnID, WorkingSet};
