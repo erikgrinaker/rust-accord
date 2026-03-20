@@ -57,18 +57,18 @@ impl Display for TxnID {
 pub trait Transaction: Clone {
     /// Key used to derive the transaction's participating shards, and as a key for
     /// [`Self::ShardRead`] and [`Self::ShardUpdate`] operations.
-    type ShardKey: Clone + Debug + Display + Eq + Hash + Ord + PartialEq + PartialOrd;
+    type ShardKey: Clone + Debug + Display + Eq + Hash + Ord + PartialEq + PartialOrd + Send;
     /// Value returned for a [`Self::ShardRead`] operation and used for execution.
-    type ShardValue: Debug;
+    type ShardValue: Debug + Send;
     /// Read operation to submit to a participating shard prior to execution.
-    type ShardRead: Debug;
+    type ShardRead: Debug + Send;
     /// Deterministic state update for a participating shard produced during execution.
-    type ShardUpdate: Clone + Debug;
+    type ShardUpdate: Clone + Debug + Send;
     /// The transaction's working set. Used to determine participating shards and detect conflicts
     /// between transactions during preparation.
     type WorkingSet: WorkingSet<Self>;
     /// Deterministic client-visible output produced during execution.
-    type Output: Debug;
+    type Output: Debug + Send;
 
     /// Prepares the transaction and returns its working set.
     ///
@@ -115,7 +115,7 @@ pub type ShardUpdates<T> = HashMap<<T as Transaction>::ShardKey, <T as Transacti
 
 /// The working set of a transaction, returned by [`Transaction::prepare`]. Used to determine
 /// participating shards and detect conflicts between transactions.
-pub trait WorkingSet<T: Transaction> {
+pub trait WorkingSet<T: Transaction>: Send {
     /// Determines whether this transaction conflicts with another transaction. By default, checks
     /// if either transaction's write set overlaps with the other transaction's working set, which
     /// is a common heuristic, but transactions can override it with their own conflict logic.
